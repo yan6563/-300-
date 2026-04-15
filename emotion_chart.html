@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>沪深300 情绪走势图</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #00d4ff;
+            font-size: 24px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .chart-container {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        canvas { max-height: 70vh; }
+        .info-panel {
+            margin-top: 20px;
+            background: #0f3460;
+            border-radius: 12px;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .info-item {
+            text-align: center;
+        }
+        .info-label { color: #888; font-size: 12px; margin-bottom: 5px; }
+        .info-value { font-size: 20px; font-weight: bold; }
+        .up { color: #ff4757; }
+        .down { color: #2ed573; }
+        .neutral { color: #ffa502; }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .controls label { color: #888; font-size: 14px; }
+        .controls select {
+            background: #0f3460;
+            border: 1px solid #00d4ff;
+            color: #00d4ff;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📈 沪深300 APCSR 情绪走势图</h1>
+        <p class="subtitle">数据范围: 2024-04-15 ~ 2025-04-11 | 共 241 个交易日 | 点击点查看详情</p>
+        
+        <div class="chart-container">
+            <div class="controls">
+                <label>指标选择:</label>
+                <select id="metricSelect" onchange="updateChart()">
+                    <option value="finalScore">最终平滑得分</option>
+                    <option value="rawScore">当日原始值</option>
+                    <option value="ema3">3日EMA</option>
+                    <option value="ema5">5日EMA</option>
+                </select>
+            </div>
+            <canvas id="emotionChart"></canvas>
+        </div>
+        
+        <div class="info-panel">
+            <div class="info-item">
+                <div class="info-label">当前情绪值</div>
+                <div class="info-value neutral" id="currentValue">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">最新日期</div>
+                <div class="info-value" id="currentDate">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">情绪区间</div>
+                <div class="info-value" id="currentZone">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">最高情绪值</div>
+                <div class="info-value up" id="maxValue">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">最低情绪值</div>
+                <div class="info-value down" id="minValue">--</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+const fullData = [
+  {date: "2024-04-15", finalScore: 35.21, rawScore: 35.21, ema3: 35.21, ema5: 35.21, zone: "偏冷(试探区)"},
+  {date: "2024-04-16", finalScore: 34.8, rawScore: 34.8, ema3: 34.8, ema5: 34.8, zone: "偏冷(试探区)"},
+  {date: "2024-04-17", finalScore: 69.79, rawScore: 75.93, ema3: 55.47, ema5: 75.93, zone: "偏热(持有区)"},
+  {date: "2024-04-18", finalScore: 60.11, rawScore: 60.95, ema3: 58.16, ema5: 60.95, zone: "偏热(持有区)"},
+  {date: "2024-04-19", finalScore: 58.84, rawScore: 57.54, ema3: 62.99, ema5: 54.22, zone: "正常均衡(持有区)"},
+  {date: "2024-04-22", finalScore: 43.22, rawScore: 39.18, ema3: 49.21, ema5: 49.54, zone: "正常均衡(持有区)"},
+  {date: "2024-04-23", finalScore: 39.17, rawScore: 36.04, ema3: 42.2, ema5: 48.82, zone: "偏冷(试探区)"},
+  {date: "2024-04-24", finalScore: 35.27, rawScore: 33.88, ema3: 35.75, ema5: 42.19, zone: "偏冷(试探区)"},
+  {date: "2024-04-25", finalScore: 30.69, rawScore: 29.09, ema3: 32.02, ema5: 36.27, zone: "偏冷(试探区)"},
+  {date: "2024-04-26", finalScore: 48.27, rawScore: 52.44, ema3: 41.96, ema5: 42.22, zone: "正常均衡(持有区)"},
+  {date: "2024-04-29", finalScore: 47.71, rawScore: 49.74, ema3: 45.25, ema5: 42.95, zone: "正常均衡(持有区)"},
+  {date: "2024-04-30", finalScore: 49.96, rawScore: 50.37, ema3: 50.73, ema5: 45.18, zone: "正常均衡(持有区)"},
+  {date: "2024-05-06", finalScore: 52.05, rawScore: 52.91, ema3: 51.48, ema5: 48.62, zone: "正常均衡(持有区)"},
+  {date: "2024-05-07", finalScore: 41.63, rawScore: 39.04, ema3: 45.34, ema5: 46.08, zone: "正常均衡(持有区)"},
+  {date: "2024-05-08", finalScore: 47.04, rawScore: 47.17, ema3: 46.57, ema5: 47.65, zone: "正常均衡(持有区)"},
+  {date: "2024-05-09", finalScore: 49.15, rawScore: 50.42, ema3: 46.76, ema5: 48.68, zone: "正常均衡(持有区)"},
+  {date: "2024-05-10", finalScore: 42.37, rawScore: 40.79, ema3: 44.79, ema5: 44.56, zone: "正常均衡(持有区)"},
+  {date: "2024-05-13", finalScore: 41.53, rawScore: 40.55, ema3: 43.08, ema5: 42.72, zone: "正常均衡(持有区)"},
+  {date: "2024-05-14", finalScore: 36.04, rawScore: 34.54, ema3: 37.6, ema5: 40.36, zone: "偏冷(试探区)"},
+  {date: "2024-05-15", finalScore: 39.24, rawScore: 39.4, ema3: 38.47, ema5: 40.64, zone: "偏冷(试探区)"},
+  {date: "2024-05-16", finalScore: 29.04, rawScore: 26.84, ema3: 31.9, ema5: 33.69, zone: "偏冷(试探区)"},
+  {date: "2024-05-17", finalScore: 39.78, rawScore: 41.36, ema3: 37.24, ema5: 37.92, zone: "偏冷(试探区)"},
+  {date: "2024-05-20", finalScore: 41.85, rawScore: 43.77, ema3: 38.94, ema5: 39.06, zone: "正常均衡(持有区)"},
+  {date: "2024-05-21", finalScore: 46.06, rawScore: 47.32, ema3: 44.94, ema5: 41.9, zone: "正常均衡(持有区)"},
+  {date: "2024-05-22", finalScore: 36.4, rawScore: 34.42, ema3: 39.98, ema5: 37.51, zone: "偏冷(试探区)"},
+  {date: "2024-05-23", finalScore: 38.07, rawScore: 37.28, ema3: 39.08, ema5: 39.82, zone: "偏冷(试探区)"},
+  {date: "2024-05-24", finalScore: 33.96, rawScore: 33.11, ema3: 34.48, ema5: 37.45, zone: "偏冷(试探区)"},
+  {date: "2024-05-27", finalScore: 39.16, rawScore: 39.99, ema3: 37.59, ema5: 38.87, zone: "偏冷(试探区)"},
+  {date: "2024-05-28", finalScore: 39.37, rawScore: 40.13, ema3: 38.34, ema5: 37.88, zone: "偏冷(试探区)"},
+  {date: "2024-05-29", finalScore: 30.87, rawScore: 28.64, ema3: 34.35, ema5: 33.78, zone: "偏冷(试探区)"},
+  {date: "2024-05-30", finalScore: 34.51, rawScore: 34.46, ema3: 34.42, ema5: 35.04, zone: "偏冷(试探区)"},
+  {date: "2024-05-31", finalScore: 32.8, rawScore: 32.82, ema3: 32.18, ema5: 34.53, zone: "偏冷(试探区)"},
+  {date: "2024-06-03", finalScore: 27.73, rawScore: 26.16, ema3: 29.9, ema5: 30.65, zone: "偏冷(试探区)"},
+  {date: "2024-06-04", finalScore: 37.27, rawScore: 39.23, ema3: 34.36, ema5: 34.25, zone: "偏冷(试探区)"},
+  {date: "2024-06-05", finalScore: 39.7, rawScore: 41.5, ema3: 37.1, ema5: 36.74, zone: "偏冷(试探区)"},
+  {date: "2024-06-06", finalScore: 38.51, rawScore: 38.41, ema3: 39.39, ema5: 36.42, zone: "偏冷(试探区)"},
+  {date: "2024-06-07", finalScore: 36.52, rawScore: 35.88, ema3: 37.92, ema5: 36.13, zone: "偏冷(试探区)"},
+  {date: "2024-06-11", finalScore: 35.01, rawScore: 34.34, ema3: 35.74, ema5: 36.86, zone: "偏冷(试探区)"},
+  {date: "2024-06-12", finalScore: 29.89, rawScore: 28.35, ema3: 31.73, ema5: 33.6, zone: "偏冷(试探区)"},
+  {date: "2024-06-13", finalScore: 35.96, rawScore: 36.96, ema3: 34.15, ema5: 35.41, zone: "偏冷(试探区)"},
+  {date: "2024-06-14", finalScore: 30.38, rawScore: 29.7, ema3: 31.18, ema5: 32.09, zone: "偏冷(试探区)"},
+  {date: "2024-06-17", finalScore: 35.59, rawScore: 36.25, ema3: 34.79, ema5: 34.01, zone: "偏冷(试探区)"},
+  {date: "2024-06-18", finalScore: 34.48, rawScore: 34.89, ema3: 33.93, ema5: 33.7, zone: "偏冷(试探区)"},
+  {date: "2024-06-19", finalScore: 38.53, rawScore: 39.38, ema3: 37.48, ema5: 36.56, zone: "偏冷(试探区)"},
+  {date: "2024-06-20", finalScore: 37.3, rawScore: 37.49, ema3: 37.31, ema5: 36.1, zone: "偏冷(试探区)"},
+  {date: "2024-06-21", finalScore: 26.79, rawScore: 23.85, ema3: 31.14, ema5: 31.37, zone: "偏冷(试探区)"},
+  {date: "2024-06-24", finalScore: 33.19, rawScore: 33.61, ema3: 32.14, ema5: 33.78, zone: "偏冷(试探区)"},
+  {date: "2024-06-25", finalScore: 32.03, rawScore: 32.54, ema3: 30.64, ema5: 33.14, zone: "偏冷(试探区)"},
+  {date: "2024-06-26", finalScore: 33.4, rawScore: 33.57, ema3: 33.32, ema5: 32.6, zone: "偏冷(试探区)"},
+  {date: "2024-06-27", finalScore: 34.85, rawScore: 35.48, ema3: 34.27, ema5: 32.86, zone: "偏冷(试探区)"},
+  {date: "2024-06-28", finalScore: 33.24, rawScore: 32.95, ema3: 33.74, ema5: 33.44, zone: "偏冷(试探区)"},
+  {date: "2024-07-01", finalScore: 36.9, rawScore: 37.64, ema3: 35.93, ema5: 35.35, zone: "偏冷(试探区)"},
+  {date: "2024-07-02", finalScore: 40.75, rawScore: 42.2, ema3: 38.75, ema5: 38.03, zone: "正常均衡(持有区)"},
+  {date: "2024-07-03", finalScore: 39.44, rawScore: 39.52, ema3: 39.72, ema5: 38.12, zone: "偏冷(试探区)"},
+  {date: "2024-07-04", finalScore: 36.87, rawScore: 36.03, ema3: 38.45, ema5: 37.2, zone: "偏冷(试探区)"},
+  {date: "2024-07-05", finalScore: 26.27, rawScore: 23.19, ema3: 30.48, ema5: 32.14, zone: "偏冷(试探区)"},
+  {date: "2024-07-08", finalScore: 34.69, rawScore: 35.62, ema3: 32.61, ema5: 35.4, zone: "偏冷(试探区)"},
+  {date: "2024-07-09", finalScore: 40.42, rawScore: 43.0, ema3: 36.2, ema5: 37.62, zone: "正常均衡(持有区)"},
+  {date: "2024-07-10", finalScore: 40.4, rawScore: 41.03, ema3: 40.17, ema5: 37.28, zone: "正常均衡(持有区)"},
+  {date: "2024-07-11", finalScore: 48.44, rawScore: 50.57, ema3: 46.29, ema5: 42.08, zone: "正常均衡(持有区)"},
+  {date: "2024-07-12", finalScore: 45.91, rawScore: 46.17, ema3: 45.98, ema5: 44.1, zone: "正常均衡(持有区)"},
+  {date: "2024-07-15", finalScore: 45.57, rawScore: 45.07, ema3: 46.72, ema5: 45.14, zone: "正常均衡(持有区)"},
+  {date: "2024-07-16", finalScore: 41.9, rawScore: 40.92, ema3: 43.27, ema5: 43.66, zone: "正常均衡(持有区)"},
+  {date: "2024-07-17", finalScore: 45.09, rawScore: 45.44, ema3: 44.22, ema5: 45.58, zone: "正常均衡(持有区)"},
+  {date: "2024-07-18", finalScore: 43.18, rawScore: 43.09, ema3: 43.14, ema5: 43.84, zone: "正常均衡(持有区)"},
+  {date: "2024-07-19", finalScore: 43.13, rawScore: 42.88, ema3: 43.57, ema5: 43.31, zone: "正常均衡(持有区)"},
+  {date: "2024-07-22", finalScore: 45.85, rawScore: 46.59, ema3: 44.79, ema5: 44.59, zone: "正常均衡(持有区)"},
+  {date: "2024-07-23", finalScore: 40.41, rawScore: 39.3, ema3: 42.02, ema5: 42.27, zone: "正常均衡(持有区)"},
+  {date: "2024-07-24", finalScore: 34.91, rawScore: 32.81, ema3: 37.88, ema5: 38.61, zone: "偏冷(试探区)"},
+  {date: "2024-07-25", finalScore: 32.9, rawScore: 31.76, ema3: 33.91, ema5: 36.69, zone: "偏冷(试探区)"},
+  {date: "2024-07-26", finalScore: 32.43, rawScore: 32.08, ema3: 32.18, ema5: 35.24, zone: "偏冷(试探区)"},
+  {date: "2024-07-29", finalScore: 36.25, rawScore: 37.23, ema3: 34.57, ema5: 35.38, zone: "偏冷(试探区)"},
+  {date: "2024-07-30", finalScore: 36.09, rawScore: 36.55, ema3: 35.6, ema5: 34.79, zone: "偏冷(试探区)"},
+  {date: "2024-07-31", finalScore: 52.78, rawScore: 57.11, ema3: 47.0, ema5: 44.14, zone: "正常均衡(持有区)"},
+  {date: "2024-08-01", finalScore: 48.68, rawScore: 49.6, ema3: 48.22, ema5: 44.54, zone: "正常均衡(持有区)"},
+  {date: "2024-08-02", finalScore: 46.28, rawScore: 45.02, ema3: 49.19, ema5: 45.08, zone: "正常均衡(持有区)"},
+  {date: "2024-08-05", finalScore: 37.22, rawScore: 34.6, ema3: 40.96, ema5: 41.73, zone: "偏冷(试探区)"},
+  {date: "2024-08-06", finalScore: 30.7, rawScore: 27.83, ema3: 33.82, ema5: 38.55, zone: "偏冷(试探区)"},
+  {date: "2024-08-07", finalScore: 34.8, rawScore: 35.16, ema3: 33.19, ema5: 37.5, zone: "偏冷(试探区)"},
+  {date: "2024-08-08", finalScore: 35.23, rawScore: 35.9, ema3: 33.7, ema5: 35.76, zone: "偏冷(试探区)"},
+  {date: "2024-08-09", finalScore: 33.99, rawScore: 33.74, ema3: 34.64, ema5: 33.53, zone: "偏冷(试探区)"},
+  {date: "2024-08-12", finalScore: 33.22, rawScore: 32.92, ema3: 33.87, ema5: 33.06, zone: "偏冷(试探区)"},
+  {date: "2024-08-13", finalScore: 30.74, rawScore: 29.98, ema3: 31.66, ema5: 32.52, zone: "偏冷(试探区)"},
+  {date: "2024-08-14", finalScore: 34.95, rawScore: 35.74, ema3: 33.6, ema5: 34.25, zone: "偏冷(试探区)"},
+  {date: "2024-08-15", finalScore: 40.09, rawScore: 41.96, ema3: 37.41, ema5: 36.89, zone: "正常均衡(持有区)"},
+  {date: "2024-08-16", finalScore: 33.37, rawScore: 32.21, ema3: 35.53, ema5: 33.89, zone: "偏冷(试探区)"},
+  {date: "2024-08-19", finalScore: 37.0, rawScore: 37.13, ema3: 37.11, ema5: 35.9, zone: "偏冷(试探区)"},
+  {date: "2024-08-20", finalScore: 38.15, rawScore: 38.91, ema3: 36.79, ema5: 37.68, zone: "偏冷(试探区)"},
+  {date: "2024-08-21", finalScore: 36.39, rawScore: 35.99, ema3: 37.01, ema5: 36.88, zone: "偏冷(试探区)"},
+  {date: "2024-08-22", finalScore: 36.12, rawScore: 35.88, ema3: 36.66, ema5: 35.98, zone: "偏冷(试探区)"},
+  {date: "2024-08-23", finalScore: 29.98, rawScore: 28.35, ema3: 32.14, ema5: 33.28, zone: "偏冷(试探区)"},
+  {date: "2024-08-26", finalScore: 36.23, rawScore: 37.11, ema3: 34.61, ema5: 35.78, zone: "偏冷(试探区)"},
+  {date: "2024-08-27", finalScore: 35.94, rawScore: 36.67, ema3: 34.7, ema5: 35.33, zone: "偏冷(试探区)"},
+  {date: "2024-08-28", finalScore: 34.0, rawScore: 33.42, ema3: 35.16, ema5: 34.04, zone: "偏冷(试探区)"},
+  {date: "2024-08-29", finalScore: 26.23, rawScore: 24.01, ema3: 29.53, ema5: 29.65, zone: "偏冷(试探区)"},
+  {date: "2024-08-30", finalScore: 42.01, rawScore: 45.19, ema3: 36.95, ema5: 38.11, zone: "正常均衡(持有区)"},
+  {date: "2024-09-02", finalScore: 39.87, rawScore: 41.23, ema3: 37.92, ema5: 37.57, zone: "偏冷(试探区)"},
+  {date: "2024-09-03", finalScore: 35.65, rawScore: 34.2, ema3: 38.7, ema5: 35.21, zone: "偏冷(试探区)"},
+  {date: "2024-09-04", finalScore: 37.56, rawScore: 37.63, ema3: 37.67, ema5: 36.79, zone: "偏冷(试探区)"},
+  {date: "2024-09-05", finalScore: 33.46, rawScore: 32.55, ema3: 34.23, ema5: 36.56, zone: "偏冷(试探区)"},
+  {date: "2024-09-06", finalScore: 36.23, rawScore: 36.43, ema3: 35.76, ema5: 36.41, zone: "偏冷(试探区)"},
+  {date: "2024-09-09", finalScore: 33.38, rawScore: 33.04, ema3: 33.76, ema5: 34.28, zone: "偏冷(试探区)"},
+  {date: "2024-09-10", finalScore: 24.56, rawScore: 21.89, ema3: 28.31, ema5: 29.33, zone: "偏冷(试探区)"},
+  {date: "2024-09-11", finalScore: 32.61, rawScore: 33.7, ema3: 30.58, ema5: 32.14, zone: "偏冷(试探区)"},
+  {date: "2024-09-12", finalScore: 33.07, rawScore: 34.2, ema3: 31.0, ema5: 32.52, zone: "偏冷(试探区)"},
+  {date: "2024-09-13", finalScore: 33.19, rawScore: 33.23, ema3: 33.59, ema5: 31.79, zone: "偏冷(试探区)"},
+  {date: "2024-09-18", finalScore: 29.82, rawScore: 29.01, ema3: 31.36, ema5: 30.01, zone: "偏冷(试探区)"},
+  {date: "2024-09-19", finalScore: 38.51, rawScore: 40.34, ema3: 35.73, ema5: 35.88, zone: "偏冷(试探区)"},
+  {date: "2024-09-20", finalScore: 35.37, rawScore: 35.58, ema3: 35.13, ema5: 34.79, zone: "偏冷(试探区)"},
+  {date: "2024-09-23", finalScore: 36.88, rawScore: 36.84, ema3: 37.4, ema5: 35.53, zone: "偏冷(试探区)"},
+  {date: "2024-09-24", finalScore: 73.56, rawScore: 83.37, ema3: 59.79, ema5: 55.98, zone: "偏热(持有区)"},
+  {date: "2024-09-25", finalScore: 69.13, rawScore: 72.29, ema3: 66.2, ema5: 59.0, zone: "偏热(持有区)"},
+  {date: "2024-09-26", finalScore: 82.42, rawScore: 85.12, ema3: 81.48, ema5: 69.06, zone: "偏热(持有区)"},
+  {date: "2024-09-27", finalScore: 82.28, rawScore: 83.89, ema3: 81.3, ema5: 75.61, zone: "极度过热(减仓区)"},
+  {date: "2024-09-30", finalScore: 96.5, rawScore: 99.87, ema3: 92.19, ema5: 89.18, zone: "极度过热(减仓区)"},
+  {date: "2024-10-08", finalScore: 84.76, rawScore: 83.38, ema3: 87.63, ema5: 84.47, zone: "极度过热(减仓区)"},
+  {date: "2024-10-09", finalScore: 77.07, rawScore: 73.52, ema3: 82.57, ema5: 81.83, zone: "偏热(持有区)"},
+  {date: "2024-10-10", finalScore: 56.71, rawScore: 50.55, ema3: 64.5, ema5: 70.33, zone: "正常均衡(持有区)"},
+  {date: "2024-10-11", finalScore: 54.12, rawScore: 50.98, ema3: 56.51, ema5: 65.75, zone: "正常均衡(持有区)"},
+  {date: "2024-10-14", finalScore: 57.32, rawScore: 58.03, ema3: 54.4, ema5: 61.79, zone: "正常均衡(持有区)"},
+  {date: "2024-10-15", finalScore: 51.4, rawScore: 50.31, ema3: 52.41, ema5: 54.86, zone: "正常均衡(持有区)"},
+  {date: "2024-10-16", finalScore: 47.1, rawScore: 45.37, ema3: 49.77, ema5: 49.43, zone: "正常均衡(持有区)"},
+  {date: "2024-10-17", finalScore: 40.13, rawScore: 37.87, ema3: 42.86, ema5: 45.47, zone: "正常均衡(持有区)"},
+  {date: "2024-10-18", finalScore: 67.37, rawScore: 73.64, ema3: 57.63, ema5: 58.93, zone: "偏热(持有区)"},
+  {date: "2024-10-21", finalScore: 57.38, rawScore: 58.09, ema3: 56.92, ema5: 54.49, zone: "正常均衡(持有区)"},
+  {date: "2024-10-22", finalScore: 63.71, rawScore: 64.02, ema3: 64.94, ema5: 58.15, zone: "偏热(持有区)"},
+  {date: "2024-10-23", finalScore: 49.21, rawScore: 46.3, ema3: 53.68, ema5: 53.22, zone: "正常均衡(持有区)"},
+  {date: "2024-10-24", finalScore: 49.79, rawScore: 48.01, ema3: 51.58, ema5: 55.15, zone: "正常均衡(持有区)"},
+  {date: "2024-10-25", finalScore: 42.26, rawScore: 40.48, ema3: 43.82, ema5: 48.27, zone: "正常均衡(持有区)"},
+  {date: "2024-10-28", finalScore: 40.27, rawScore: 38.84, ema3: 41.54, ema5: 45.05, zone: "正常均衡(持有区)"},
+  {date: "2024-10-29", finalScore: 41.3, rawScore: 41.46, ema3: 40.56, ema5: 42.57, zone: "正常均衡(持有区)"},
+  {date: "2024-10-30", finalScore: 37.3, rawScore: 36.41, ema3: 38.28, ema5: 39.72, zone: "偏冷(试探区)"},
+  {date: "2024-10-31", finalScore: 27.38, rawScore: 24.34, ema3: 31.64, ema5: 32.89, zone: "偏冷(试探区)"},
+  {date: "2024-11-01", finalScore: 34.14, rawScore: 34.77, ema3: 32.57, ema5: 35.05, zone: "偏冷(试探区)"},
+  {date: "2024-11-04", finalScore: 46.5, rawScore: 50.59, ema3: 40.07, ema5: 41.25, zone: "正常均衡(持有区)"},
+  {date: "2024-11-05", finalScore: 72.14, rawScore: 80.28, ema3: 61.48, ema5: 55.28, zone: "偏热(持有区)"},
+  {date: "2024-11-06", finalScore: 66.46, rawScore: 68.02, ema3: 66.73, ema5: 56.29, zone: "偏热(持有区)"},
+  {date: "2024-11-07", finalScore: 76.34, rawScore: 78.05, ema3: 76.1, ema5: 66.83, zone: "偏热(持有区)"},
+  {date: "2024-11-08", finalScore: 60.39, rawScore: 57.36, ema3: 65.2, ema5: 64.15, zone: "偏热(持有区)"},
+  {date: "2024-11-11", finalScore: 51.22, rawScore: 46.68, ema3: 57.19, ema5: 60.54, zone: "正常均衡(持有区)"},
+  {date: "2024-11-12", finalScore: 46.48, rawScore: 44.28, ema3: 48.15, ema5: 54.71, zone: "正常均衡(持有区)"},
+  {date: "2024-11-13", finalScore: 41.3, rawScore: 39.41, ema3: 42.44, ema5: 49.23, zone: "正常均衡(持有区)"},
+  {date: "2024-11-14", finalScore: 41.51, rawScore: 41.05, ema3: 41.45, ema5: 44.41, zone: "正常均衡(持有区)"},
+  {date: "2024-11-15", finalScore: 36.82, rawScore: 35.74, ema3: 37.98, ema5: 39.81, zone: "偏冷(试探区)"},
+  {date: "2024-11-18", finalScore: 34.28, rawScore: 33.08, ema3: 35.74, ema5: 37.1, zone: "偏冷(试探区)"},
+  {date: "2024-11-19", finalScore: 32.1, rawScore: 31.29, ema3: 32.85, ema5: 34.74, zone: "偏冷(试探区)"},
+  {date: "2024-11-20", finalScore: 30.86, rawScore: 30.29, ema3: 31.24, ema5: 33.15, zone: "偏冷(试探区)"},
+  {date: "2024-11-21", finalScore: 29.87, rawScore: 29.5, ema3: 30.14, ema5: 31.27, zone: "偏冷(试探区)"},
+  {date: "2024-11-22", finalScore: 31.19, rawScore: 31.44, ema3: 30.67, ema5: 31.21, zone: "偏冷(试探区)"},
+  {date: "2024-11-25", finalScore: 28.34, rawScore: 27.77, ema3: 29.12, ema5: 29.4, zone: "偏冷(试探区)"},
+  {date: "2024-11-26", finalScore: 28.24, rawScore: 27.88, ema3: 28.74, ema5: 28.95, zone: "偏冷(试探区)"},
+  {date: "2024-11-27", finalScore: 54.22, rawScore: 61.02, ema3: 44.42, ema5: 42.81, zone: "正常均衡(持有区)"},
+  {date: "2024-11-28", finalScore: 52.45, rawScore: 55.08, ema3: 49.76, ema5: 44.76, zone: "正常均衡(持有区)"},
+  {date: "2024-11-29", finalScore: 58.35, rawScore: 59.52, ema3: 58.78, ema5: 50.04, zone: "正常均衡(持有区)"},
+  {date: "2024-12-02", finalScore: 51.55, rawScore: 50.51, ema3: 53.9, ema5: 50.72, zone: "正常均衡(持有区)"},
+  {date: "2024-12-03", finalScore: 46.07, rawScore: 43.62, ema3: 49.32, ema5: 51.0, zone: "正常均衡(持有区)"},
+  {date: "2024-12-04", finalScore: 45.43, rawScore: 44.64, ema3: 45.85, ema5: 48.95, zone: "正常均衡(持有区)"},
+  {date: "2024-12-05", finalScore: 40.86, rawScore: 39.61, ema3: 41.87, ema5: 45.3, zone: "正常均衡(持有区)"},
+  {date: "2024-12-06", finalScore: 50.82, rawScore: 52.91, ema3: 47.52, ema5: 48.16, zone: "正常均衡(持有区)"},
+  {date: "2024-12-09", finalScore: 49.89, rawScore: 50.92, ema3: 48.59, ema5: 47.65, zone: "正常均衡(持有区)"},
+  {date: "2024-12-10", finalScore: 48.86, rawScore: 48.41, ema3: 50.16, ema5: 47.62, zone: "正常均衡(持有区)"},
+  {date: "2024-12-11", finalScore: 41.82, rawScore: 39.89, ema3: 44.78, ema5: 44.5, zone: "正常均衡(持有区)"},
+  {date: "2024-12-12", finalScore: 50.26, rawScore: 51.57, ema3: 47.86, ema5: 49.55, zone: "正常均衡(持有区)"},
+  {date: "2024-12-13", finalScore: 42.54, rawScore: 41.57, ema3: 43.65, ema5: 45.07, zone: "正常均衡(持有区)"},
+  {date: "2024-12-16", finalScore: 39.07, rawScore: 37.2, ema3: 41.88, ema5: 41.86, zone: "偏冷(试探区)"},
+  {date: "2024-12-17", finalScore: 34.14, rawScore: 32.54, ema3: 35.96, ema5: 38.26, zone: "偏冷(试探区)"},
+  {date: "2024-12-18", finalScore: 31.06, rawScore: 29.64, ema3: 32.25, ema5: 35.97, zone: "偏冷(试探区)"},
+  {date: "2024-12-19", finalScore: 27.51, rawScore: 26.28, ema3: 28.68, ema5: 31.4, zone: "偏冷(试探区)"},
+  {date: "2024-12-20", finalScore: 34.85, rawScore: 36.4, ema3: 32.18, ema5: 33.55, zone: "偏冷(试探区)"},
+  {date: "2024-12-23", finalScore: 35.08, rawScore: 36.06, ema3: 33.7, ema5: 33.29, zone: "偏冷(试探区)"},
+  {date: "2024-12-24", finalScore: 53.2, rawScore: 57.94, ema3: 47.08, ema5: 43.17, zone: "正常均衡(持有区)"},
+  {date: "2024-12-25", finalScore: 53.78, rawScore: 56.12, ema3: 51.56, ema5: 46.43, zone: "正常均衡(持有区)"},
+  {date: "2024-12-26", finalScore: 47.48, rawScore: 45.73, ema3: 51.38, ema5: 46.24, zone: "正常均衡(持有区)"},
+  {date: "2024-12-27", finalScore: 43.89, rawScore: 42.2, ema3: 46.56, ema5: 46.06, zone: "正常均衡(持有区)"},
+  {date: "2024-12-30", finalScore: 42.74, rawScore: 41.95, ema3: 42.96, ema5: 46.83, zone: "正常均衡(持有区)"},
+  {date: "2024-12-31", finalScore: 40.42, rawScore: 39.67, ema3: 40.87, ema5: 43.57, zone: "正常均衡(持有区)"},
+  {date: "2025-01-02", finalScore: 33.3, rawScore: 31.22, ema3: 36.02, ema5: 37.6, zone: "偏冷(试探区)"},
+  {date: "2025-01-03", finalScore: 29.79, rawScore: 28.07, ema3: 31.76, ema5: 34.18, zone: "偏冷(试探区)"},
+  {date: "2025-01-06", finalScore: 27.32, rawScore: 26.31, ema3: 27.98, ema5: 31.41, zone: "偏冷(试探区)"},
+  {date: "2025-01-07", finalScore: 28.24, rawScore: 28.22, ema3: 27.7, ema5: 29.99, zone: "偏冷(试探区)"},
+  {date: "2025-01-08", finalScore: 33.29, rawScore: 34.78, ema3: 31.02, ema5: 31.17, zone: "偏冷(试探区)"},
+  {date: "2025-01-09", finalScore: 33.56, rawScore: 34.25, ema3: 32.88, ema5: 31.45, zone: "偏冷(试探区)"},
+  {date: "2025-01-10", finalScore: 31.89, rawScore: 31.46, ema3: 32.99, ema5: 31.13, zone: "偏冷(试探区)"},
+  {date: "2025-01-13", finalScore: 28.94, rawScore: 27.97, ema3: 30.41, ema5: 30.37, zone: "偏冷(试探区)"},
+  {date: "2025-01-14", finalScore: 63.01, rawScore: 71.54, ema3: 50.63, ema5: 49.01, zone: "偏热(持有区)"},
+  {date: "2025-01-15", finalScore: 58.12, rawScore: 60.91, ema3: 55.33, ema5: 49.71, zone: "正常均衡(持有区)"},
+  {date: "2025-01-16", finalScore: 54.92, rawScore: 53.28, ema3: 59.75, ema5: 50.25, zone: "正常均衡(持有区)"},
+  {date: "2025-01-17", finalScore: 42.2, rawScore: 38.57, ema3: 47.83, ema5: 47.06, zone: "正常均衡(持有区)"},
+  {date: "2025-01-20", finalScore: 36.87, rawScore: 33.77, ema3: 39.85, ema5: 46.52, zone: "偏冷(试探区)"},
+  {date: "2025-01-21", finalScore: 32.52, rawScore: 30.81, ema3: 33.49, ema5: 39.85, zone: "偏冷(试探区)"},
+  {date: "2025-01-22", finalScore: 36.05, rawScore: 36.54, ema3: 34.42, ema5: 38.01, zone: "偏冷(试探区)"},
+  {date: "2025-01-23", finalScore: 29.97, rawScore: 28.91, ema3: 31.29, ema5: 32.35, zone: "偏冷(试探区)"},
+  {date: "2025-01-24", finalScore: 39.84, rawScore: 41.71, ema3: 37.22, ema5: 36.45, zone: "偏冷(试探区)"},
+  {date: "2025-01-27", finalScore: 43.13, rawScore: 45.23, ema3: 40.27, ema5: 39.09, zone: "正常均衡(持有区)"},
+  {date: "2025-02-05", finalScore: 41.23, rawScore: 41.03, ema3: 42.25, ema5: 39.35, zone: "正常均衡(持有区)"},
+  {date: "2025-02-06", finalScore: 45.86, rawScore: 46.86, ema3: 45.0, ema5: 42.49, zone: "正常均衡(持有区)"},
+  {date: "2025-02-07", finalScore: 51.01, rawScore: 52.87, ema3: 48.41, ema5: 47.63, zone: "正常均衡(持有区)"},
+  {date: "2025-02-10", finalScore: 45.92, rawScore: 45.13, ema3: 47.5, ema5: 45.91, zone: "正常均衡(持有区)"},
+  {date: "2025-02-11", finalScore: 49.34, rawScore: 49.61, ema3: 49.3, ema5: 47.82, zone: "正常均衡(持有区)"},
+  {date: "2025-02-12", finalScore: 46.36, rawScore: 46.01, ema3: 46.69, ema5: 47.5, zone: "正常均衡(持有区)"},
+  {date: "2025-02-13", finalScore: 46.62, rawScore: 46.27, ema3: 47.04, ema5: 47.49, zone: "正常均衡(持有区)"},
+  {date: "2025-02-14", finalScore: 44.53, rawScore: 44.06, ema3: 45.1, ema5: 45.6, zone: "正常均衡(持有区)"},
+  {date: "2025-02-17", finalScore: 39.01, rawScore: 37.31, ema3: 41.24, ema5: 42.55, zone: "偏冷(试探区)"},
+  {date: "2025-02-18", finalScore: 41.75, rawScore: 41.83, ema3: 41.26, ema5: 42.73, zone: "正常均衡(持有区)"},
+  {date: "2025-02-19", finalScore: 37.33, rawScore: 36.54, ema3: 38.06, ema5: 39.87, zone: "偏冷(试探区)"},
+  {date: "2025-02-20", finalScore: 39.19, rawScore: 39.14, ema3: 39.16, ema5: 39.59, zone: "偏冷(试探区)"},
+  {date: "2025-02-21", finalScore: 40.93, rawScore: 41.67, ema3: 39.76, ema5: 39.98, zone: "正常均衡(持有区)"},
+  {date: "2025-02-24", finalScore: 35.18, rawScore: 33.86, ema3: 37.13, ema5: 37.25, zone: "偏冷(试探区)"},
+  {date: "2025-02-25", finalScore: 40.23, rawScore: 40.87, ema3: 39.32, ema5: 39.12, zone: "正常均衡(持有区)"},
+  {date: "2025-02-26", finalScore: 41.05, rawScore: 41.9, ema3: 39.63, ema5: 40.18, zone: "正常均衡(持有区)"},
+  {date: "2025-02-27", finalScore: 35.69, rawScore: 34.33, ema3: 37.86, ema5: 37.33, zone: "偏冷(试探区)"},
+  {date: "2025-02-28", finalScore: 40.58, rawScore: 41.25, ema3: 39.68, ema5: 39.24, zone: "正常均衡(持有区)"},
+  {date: "2025-03-03", finalScore: 27.84, rawScore: 25.11, ema3: 31.45, ema5: 33.38, zone: "偏冷(试探区)"},
+  {date: "2025-03-04", finalScore: 28.81, rawScore: 27.49, ema3: 30.34, ema5: 32.15, zone: "偏冷(试探区)"},
+  {date: "2025-03-05", finalScore: 30.4, rawScore: 31.05, ema3: 28.68, ema5: 31.62, zone: "偏冷(试探区)"},
+  {date: "2025-03-06", finalScore: 43.34, rawScore: 46.88, ema3: 38.08, ema5: 37.93, zone: "正常均衡(持有区)"},
+  {date: "2025-03-07", finalScore: 42.9, rawScore: 44.39, ema3: 41.68, ema5: 37.67, zone: "正常均衡(持有区)"},
+  {date: "2025-03-10", finalScore: 41.18, rawScore: 40.61, ema3: 43.12, ema5: 38.81, zone: "正常均衡(持有区)"},
+  {date: "2025-03-11", finalScore: 34.9, rawScore: 33.04, ema3: 37.77, ema5: 37.44, zone: "偏冷(试探区)"},
+  {date: "2025-03-12", finalScore: 39.38, rawScore: 39.73, ema3: 38.28, ema5: 40.59, zone: "偏冷(试探区)"},
+  {date: "2025-03-13", finalScore: 38.87, rawScore: 39.3, ema3: 37.84, ema5: 39.38, zone: "偏冷(试探区)"},
+  {date: "2025-03-14", finalScore: 55.12, rawScore: 59.29, ema3: 49.4, ema5: 47.22, zone: "正常均衡(持有区)"},
+  {date: "2025-03-17", finalScore: 53.3, rawScore: 54.81, ema3: 52.05, ema5: 47.97, zone: "正常均衡(持有区)"},
+  {date: "2025-03-18", finalScore: 47.72, rawScore: 45.92, ema3: 51.48, ema5: 47.27, zone: "正常均衡(持有区)"},
+  {date: "2025-03-19", finalScore: 46.84, rawScore: 45.95, ema3: 48.16, ema5: 48.17, zone: "正常均衡(持有区)"},
+  {date: "2025-03-20", finalScore: 41.88, rawScore: 40.42, ema3: 43.18, ema5: 46.75, zone: "正常均衡(持有区)"},
+  {date: "2025-03-21", finalScore: 36.78, rawScore: 34.85, ema3: 39.02, ema5: 41.66, zone: "偏冷(试探区)"},
+  {date: "2025-03-24", finalScore: 29.26, rawScore: 26.77, ema3: 32.2, ema5: 35.35, zone: "偏冷(试探区)"},
+  {date: "2025-03-25", finalScore: 36.32, rawScore: 37.32, ema3: 34.06, ema5: 37.14, zone: "偏冷(试探区)"},
+  {date: "2025-03-26", finalScore: 37.34, rawScore: 38.52, ema3: 35.28, ema5: 36.42, zone: "偏冷(试探区)"},
+  {date: "2025-03-27", finalScore: 31.41, rawScore: 29.96, ema3: 33.94, ema5: 32.48, zone: "偏冷(试探区)"},
+  {date: "2025-03-28", finalScore: 36.0, rawScore: 36.54, ema3: 35.39, ema5: 34.6, zone: "偏冷(试探区)"},
+  {date: "2025-03-31", finalScore: 34.31, rawScore: 34.42, ema3: 33.84, ema5: 35.09, zone: "偏冷(试探区)"},
+  {date: "2025-04-01", finalScore: 30.23, rawScore: 28.9, ema3: 32.19, ema5: 32.31, zone: "偏冷(试探区)"},
+  {date: "2025-04-02", finalScore: 35.26, rawScore: 36.14, ema3: 33.9, ema5: 34.03, zone: "偏冷(试探区)"},
+  {date: "2025-04-03", finalScore: 37.66, rawScore: 38.9, ema3: 35.71, ema5: 36.1, zone: "偏冷(试探区)"},
+  {date: "2025-04-07", finalScore: 30.58, rawScore: 28.97, ema3: 33.25, ema5: 32.18, zone: "偏冷(试探区)"},
+  {date: "2025-04-08", finalScore: 32.14, rawScore: 31.72, ema3: 32.83, ema5: 32.58, zone: "偏冷(试探区)"},
+  {date: "2025-04-09", finalScore: 36.63, rawScore: 38.02, ema3: 34.18, ema5: 35.68, zone: "偏冷(试探区)"},
+  {date: "2025-04-10", finalScore: 43.94, rawScore: 46.35, ema3: 40.61, ema5: 39.52, zone: "正常均衡(持有区)"},
+  {date: "2025-04-11", finalScore: 36.35, rawScore: 35.26, ema3: 38.72, ema5: 35.83, zone: "偏冷(试探区)"}
+];
+
+        let chart;
+
+        function getZoneColor(zone) {
+            if (zone.includes('极冷')) return '#3498db';
+            if (zone.includes('偏冷')) return '#2ecc71';
+            if (zone.includes('中性')) return '#f39c12';
+            if (zone.includes('偏热')) return '#e74c3c';
+            if (zone.includes('极热')) return '#9b59b6';
+            return '#95a5a6';
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('emotionChart').getContext('2d');
+            
+            document.getElementById('dataPoints').textContent = fullData.length;
+            document.getElementById('currentValue').textContent = fullData[fullData.length-1].finalScore.toFixed(2);
+            document.getElementById('currentDate').textContent = fullData[fullData.length-1].date;
+            document.getElementById('currentZone').textContent = fullData[fullData.length-1].zone;
+            
+            const maxVal = Math.max(...fullData.map(d => d.finalScore));
+            const minVal = Math.min(...fullData.map(d => d.finalScore));
+            document.getElementById('maxValue').textContent = maxVal.toFixed(2);
+            document.getElementById('minValue').textContent = minVal.toFixed(2);
+            
+            const metric = document.getElementById('metricSelect').value;
+            const labels = fullData.map(d => d.date);
+            const values = fullData.map(d => d[metric]);
+            const colors = fullData.map(d => getZoneColor(d.zone));
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '情绪值',
+                        data: values,
+                        borderColor: "#00d4ff",
+                        backgroundColor: "rgba(0, 212, 255, 0.1)",
+                        borderWidth: 2,
+                        pointRadius: 3,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: colors,
+                        pointBorderColor: colors,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleColor: '#00d4ff',
+                            bodyColor: '#fff',
+                            borderColor: '#00d4ff',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    const d = fullData[idx];
+                                    return [
+                                        `情绪值: ${d.finalScore.toFixed(2)}`,
+                                        `原始值: ${d.rawScore.toFixed(2)}`,
+                                        `日期: ${d.date}`,
+                                        `区间: ${d.zone}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#888', maxTicksLimit: 20 }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            ticks: { color: '#888' },
+                            title: { display: true, text: '情绪值', color: '#888' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart() {
+            if (chart) {
+                const metric = document.getElementById('metricSelect').value;
+                const values = fullData.map(d => d[metric]);
+                chart.data.datasets[0].data = values;
+                chart.update();
+            }
+        }
+
+        initChart();
+    </script>
+</body>
+</html>
